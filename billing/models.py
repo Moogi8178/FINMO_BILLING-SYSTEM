@@ -2,6 +2,7 @@ import uuid
 from django.conf import settings
 from django.db import models
 from django.utils import timezone
+from django.utils.text import slugify
 
 
 class Provider(models.Model):
@@ -21,6 +22,8 @@ class Provider(models.Model):
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='provider'
     )
     business_name = models.CharField(max_length=150)
+    slug = models.SlugField(max_length=170, unique=True, blank=True,
+                             help_text="Used in the public purchase page URL, e.g. /pay/<slug>/")
     contact_email = models.EmailField(blank=True)
     contact_phone = models.CharField(max_length=15, blank=True)
 
@@ -41,6 +44,17 @@ class Provider(models.Model):
 
     def __str__(self):
         return self.business_name
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            base_slug = slugify(self.business_name) or 'provider'
+            slug = base_slug
+            counter = 1
+            while Provider.objects.filter(slug=slug).exclude(pk=self.pk).exists():
+                counter += 1
+                slug = f"{base_slug}-{counter}"
+            self.slug = slug
+        super().save(*args, **kwargs)
 
     @property
     def mpesa_base_url(self):
