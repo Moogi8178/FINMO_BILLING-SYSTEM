@@ -150,7 +150,41 @@ def mpesa_callback(request):
     # Safaricom just needs a 200 OK acknowledgement
     return Response({"ResultCode": 0, "ResultDesc": "Accepted"}, status=200)
 
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def create_superuser_once(request):
+    """
+    One-time setup endpoint to create an admin user on hosts without shell access
+    (e.g. Render's free tier). Protected by a secret token so randoms can't hit it.
 
+    Visit: /api/setup/create-admin/?token=<SETUP_SECRET>
+    Set ADMIN_USERNAME, ADMIN_EMAIL, ADMIN_PASSWORD, SETUP_SECRET as env vars first.
+    Does nothing (safely) if a superuser already exists or the token is wrong.
+    """
+    from django.contrib.auth.models import User
+    from django.conf import settings as django_settings
+
+    token = request.GET.get('token', '')
+    expected_token = getattr(django_settings, 'SETUP_SECRET', '')
+
+    if not expected_token or token != expected_token:
+        return Response({"error": "Invalid or missing token"}, status=status.HTTP_403_FORBIDDEN)
+
+    if User.objects.filter(is_superuser=True).exists():
+        return Response({"message": "A superuser already exists. Nothing to do."})
+
+    username = getattr(django_settings, 'ADMIN_USERNAME', '')
+    email = getattr(django_settings, 'ADMIN_EMAIL', '')
+    password = getattr(django_settings, 'ADMIN_PASSWORD', '')
+
+    if not username or not password:
+        return Response(
+            {"error": "Set ADMIN_USERNAME and ADMIN_PASSWORD env vars first"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    User.objects.create_superuser(username=username, email=email, password=password)
+    return Response({"message": f"Superuser '{username}' created. You can now log in at /admin/."})
 @api_view(['GET'])
 def dashboard_summary(request):
     """Quick reporting endpoint: revenue, customer counts, overdue invoices."""
