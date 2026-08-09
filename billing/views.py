@@ -3,7 +3,9 @@ from datetime import timedelta
 
 from django.utils import timezone
 from django.db.models import Sum, Count, Q
+from django.shortcuts import render, get_object_or_404
 from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_http_methods
 from rest_framework import viewsets, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -301,3 +303,99 @@ def create_superuser_once(request):
 
     User.objects.create_superuser(username=username, email=email, password=password)
     return Response({"message": f"Superuser '{username}' created. You can now log in at /admin/."})
+
+
+@require_http_methods(["GET", "POST"])
+def purchase_page(request, slug):
+    """
+    Public self-service page: a WiFi customer picks a package and pays
+    directly via M-Pesa STK push, no login or admin action needed.
+    URL: /pay/<provider-slug>/
+    """
+    provider = get_object_or_404(Provider, slug=slug, is_active=True)
+    packages = Package.objects.filter(provider=provider, is_active=True).order_by('price')
+
+    context = {'provider': provider, 'packages': packages}
+
+    if request.method == 'POST':
+        full_name = request.POST.get('full_name', '').strip()
+        phone_number = request.POST.get('phone_number', '').strip()
+        package_id = request.POST.get('package_id')
+
+        errors = []
+        if not full_name:
+            errors.append("Please enter your name.")
+        if not phone_number:
+            errors.append("Please enter your phone number.")
+        package = packages.filter(id=package_id).first()
+        if not package:
+            errors.append("Please select a package.")
+
+        if errors:
+            context['errors'] = errors
+            context['form_full_name'] = full_name
+            context['form_phone_number'] = phone_number
+            return render(request, 'billing/purchase.html', context)
+
+        normalized_phone = mpesa.normalize_phone(phone_number)
+
+        customer, _ = Customer.objects.get_or_create(
+            provider=provider, phone_number=normalized_phone,
+            defaults={'full_name': full_name, 'package': package, 'status': 'active'},
+        )
+        customer.full_name = full_name
+        customer.package = package
+        customer.save()
+
+        invoice = Invoice.objects.create(
+            customer=customer, package=package, amount=package.price,
+            due_date=timezone.now().date(),
+        )
+
+        try:
+            result = mpesa.stk_push(
+                provider=provider,
+                phone_number=normalized_phone,
+                amount=package.price,
+                account_reference=invoice.invoice_number,
+                description=f"WiFi-{package.name}",
+            )
+        except mpesa.MpesaError as e:
+            invoice.status = 'cancelled'
+            invoice.save()
+            logger.error("Self-service STK push failed for %s: %s", provider.business_name, e)
+            context['errors'] = [f"Could not start payment. Please try again in a moment."]
+            return render(request, 'billing/purchase.html', context)
+
+        payment = Payment.objects.create(
+            invoice=invoice,
+            phone_number=normalized_phone,
+            amount=package.price,
+            merchant_request_id=result.get('MerchantRequestID'),
+            checkout_request_id=result.get('CheckoutRequestID'),
+            status='pending' if result.get('ResponseCode') == '0' else 'failed',
+            result_desc=result.get('ResponseDescription', ''),
+        )
+
+        return render(request, 'billing/purchase_pending.html', {
+            'provider': provider,
+            'package': package,
+            'phone_number': normalized_phone,
+            'payment_id': payment.id,
+        })
+
+    return render(request, 'billing/purchase.html', context)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def payment_status(request, payment_id):
+    """Polled by the purchase-pending page to check whether payment completed."""
+    try:
+        payment = Payment.objects.get(id=payment_id)
+    except Payment.DoesNotExist:
+        return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+    return Response({
+        "status": payment.status,
+        "result_desc": payment.result_desc,
+    })
