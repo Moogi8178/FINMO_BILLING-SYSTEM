@@ -1,10 +1,58 @@
 import uuid
+from django.conf import settings
 from django.db import models
 from django.utils import timezone
 
 
+class Provider(models.Model):
+    """
+    A WiFi/ISP business using this platform to bill their own customers.
+    Each provider has their own M-Pesa Paybill/Till and collects payment
+    directly from their customers - money never passes through this
+    platform's own account. Providers pay the platform owner a commission
+    separately, tracked via CommissionRecord.
+    """
+    ENV_CHOICES = [
+        ('sandbox', 'Sandbox'),
+        ('production', 'Production'),
+    ]
+
+    owner = models.OneToOneField(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='provider'
+    )
+    business_name = models.CharField(max_length=150)
+    contact_email = models.EmailField(blank=True)
+    contact_phone = models.CharField(max_length=15, blank=True)
+
+    # Each provider's own M-Pesa Daraja credentials - their customers pay
+    # into this shortcode directly, not the platform's.
+    mpesa_env = models.CharField(max_length=10, choices=ENV_CHOICES, default='sandbox')
+    mpesa_shortcode = models.CharField(max_length=20, blank=True)
+    mpesa_consumer_key = models.CharField(max_length=255, blank=True)
+    mpesa_consumer_secret = models.CharField(max_length=255, blank=True)
+    mpesa_passkey = models.CharField(max_length=255, blank=True)
+
+    commission_percentage = models.DecimalField(
+        max_digits=5, decimal_places=2, default=10.00,
+        help_text="Percentage of monthly revenue this provider owes the platform owner"
+    )
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.business_name
+
+    @property
+    def mpesa_base_url(self):
+        return (
+            'https://sandbox.safaricom.co.ke' if self.mpesa_env == 'sandbox'
+            else 'https://api.safaricom.co.ke'
+        )
+
+
 class Package(models.Model):
     """A WiFi subscription package, e.g. '5 Mbps Home - Monthly'."""
+    provider = models.ForeignKey(Provider, on_delete=models.CASCADE, related_name='packages')
     name = models.CharField(max_length=100)
     speed_mbps = models.PositiveIntegerField(help_text="Download speed in Mbps")
     price = models.DecimalField(max_digits=10, decimal_places=2, help_text="Price in KES")
@@ -24,10 +72,10 @@ class Customer(models.Model):
         ('expired', 'Expired'),
     ]
 
+    provider = models.ForeignKey(Provider, on_delete=models.CASCADE, related_name='customers')
     full_name = models.CharField(max_length=150)
     phone_number = models.CharField(
         max_length=15,
-        unique=True,
         help_text="Format: 2547XXXXXXXX (used for M-Pesa STK push)"
     )
     email = models.EmailField(blank=True, null=True)
@@ -39,6 +87,9 @@ class Customer(models.Model):
     router_serial = models.CharField(max_length=100, blank=True, help_text="Optional: equipment/router ID")
     notes = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = [('provider', 'phone_number')]
 
     def __str__(self):
         return f"{self.full_name} ({self.phone_number})"
@@ -107,3 +158,30 @@ class Payment(models.Model):
 
     def __str__(self):
         return f"Payment {self.id} - {self.phone_number} - {self.status}"
+
+
+class CommissionRecord(models.Model):
+    """
+    Tracks what a provider owes the platform owner for a given month,
+    based on their revenue collected through this platform. Money is
+    NOT moved automatically - this is a record for manual reconciliation
+    (the provider pays the platform owner separately, outside the app).
+    """
+    STATUS_CHOICES = [
+        ('unpaid', 'Unpaid'),
+        ('paid', 'Paid'),
+    ]
+
+    provider = models.ForeignKey(Provider, on_delete=models.CASCADE, related_name='commission_records')
+    period_start = models.DateField()
+    period_end = models.DateField()
+    provider_revenue = models.DecimalField(max_digits=12, decimal_places=2, help_text="Total paid invoices in this period")
+    commission_percentage = models.DecimalField(max_digits=5, decimal_places=2)
+    commission_amount = models.DecimalField(max_digits=12, decimal_places=2, help_text="Amount owed to the platform owner")
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='unpaid')
+    paid_at = models.DateTimeField(null=True, blank=True)
+    notes = models.CharField(max_length=255, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.provider.business_name} - {self.period_start} to {self.period_end} - KES {self.commission_amount} ({self.status})"
