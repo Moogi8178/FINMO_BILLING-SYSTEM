@@ -6,12 +6,12 @@ from django.db.models import Sum, Count, Q
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework import viewsets, status
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
-from .models import Package, Customer, Invoice, Payment
+from .models import Provider, Package, Customer, Invoice, Payment, CommissionRecord
 from .serializers import (
-    PackageSerializer, CustomerSerializer, InvoiceSerializer,
+    ProviderSerializer, PackageSerializer, CustomerSerializer, InvoiceSerializer,
     PaymentSerializer, InitiatePaymentSerializer,
 )
 from . import mpesa
@@ -19,31 +19,99 @@ from . import mpesa
 logger = logging.getLogger(__name__)
 
 
-class PackageViewSet(viewsets.ModelViewSet):
+def get_request_provider(request):
+    """Returns the Provider linked to the logged-in user, or None."""
+    return getattr(request.user, 'provider', None)
+
+
+class ProviderScopedViewSet(viewsets.ModelViewSet):
+    """
+    Base class that automatically scopes queries to the logged-in user's
+    Provider, so one provider can never see or edit another's data.
+    Superusers (platform admin) see everything.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        if self.request.user.is_superuser:
+            return qs
+        provider = get_request_provider(self.request)
+        if provider is None:
+            return qs.none()
+        return qs.filter(**{self.provider_filter_field: provider})
+
+    def perform_create(self, serializer):
+        provider = get_request_provider(self.request)
+        if provider is not None:
+            serializer.save(**{self.provider_filter_field: provider})
+        else:
+            serializer.save()
+
+
+class ProviderViewSet(viewsets.ModelViewSet):
+    """A provider can view/edit only their own record. Superusers see all."""
+    queryset = Provider.objects.all()
+    serializer_class = ProviderSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        if self.request.user.is_superuser:
+            return Provider.objects.all()
+        provider = get_request_provider(self.request)
+        if provider is None:
+            return Provider.objects.none()
+        return Provider.objects.filter(id=provider.id)
+
+
+class PackageViewSet(ProviderScopedViewSet):
     queryset = Package.objects.all()
     serializer_class = PackageSerializer
+    provider_filter_field = 'provider'
 
 
-class CustomerViewSet(viewsets.ModelViewSet):
+class CustomerViewSet(ProviderScopedViewSet):
     queryset = Customer.objects.all()
     serializer_class = CustomerSerializer
+    provider_filter_field = 'provider'
 
 
-class InvoiceViewSet(viewsets.ModelViewSet):
+class InvoiceViewSet(ProviderScopedViewSet):
     queryset = Invoice.objects.all()
     serializer_class = InvoiceSerializer
+    provider_filter_field = 'customer__provider'
+
+    def get_queryset(self):
+        qs = Invoice.objects.select_related('customer', 'package')
+        if self.request.user.is_superuser:
+            return qs
+        provider = get_request_provider(self.request)
+        if provider is None:
+            return qs.none()
+        return qs.filter(customer__provider=provider)
 
 
 class PaymentViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Payment.objects.all()
     serializer_class = PaymentSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        qs = Payment.objects.select_related('invoice__customer')
+        if self.request.user.is_superuser:
+            return qs
+        provider = get_request_provider(self.request)
+        if provider is None:
+            return qs.none()
+        return qs.filter(invoice__customer__provider=provider)
 
 
 @api_view(['POST'])
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated])
 def initiate_payment(request):
     """
-    Trigger an M-Pesa STK Push for a given invoice.
+    Trigger an M-Pesa STK Push for a given invoice, charged to that
+    invoice's provider's own Paybill/Till.
     Body: { "invoice_id": <int> }
     """
     serializer = InitiatePaymentSerializer(data=request.data)
@@ -51,12 +119,20 @@ def initiate_payment(request):
     invoice_id = serializer.validated_data['invoice_id']
 
     try:
-        invoice = Invoice.objects.select_related('customer').get(id=invoice_id)
+        invoice = Invoice.objects.select_related('customer', 'customer__provider').get(id=invoice_id)
     except Invoice.DoesNotExist:
         return Response({"error": "Invoice not found"}, status=status.HTTP_404_NOT_FOUND)
 
+    # Access control: only the owning provider (or a superuser) may trigger this
+    if not request.user.is_superuser:
+        provider = get_request_provider(request)
+        if provider is None or invoice.customer.provider_id != provider.id:
+            return Response({"error": "Not permitted for this invoice"}, status=status.HTTP_403_FORBIDDEN)
+
     if invoice.status == 'paid':
         return Response({"error": "Invoice already paid"}, status=status.HTTP_400_BAD_REQUEST)
+
+    provider = invoice.customer.provider
 
     payment = Payment.objects.create(
         invoice=invoice,
@@ -67,6 +143,7 @@ def initiate_payment(request):
 
     try:
         result = mpesa.stk_push(
+            provider=provider,
             phone_number=invoice.customer.phone_number,
             amount=invoice.amount,
             account_reference=invoice.invoice_number,
@@ -99,7 +176,8 @@ def initiate_payment(request):
 def mpesa_callback(request):
     """
     Safaricom calls this URL after the customer completes (or cancels) the STK prompt.
-    This URL must be publicly reachable over HTTPS and set as MPESA_CALLBACK_URL.
+    One shared URL handles every provider - we look up which payment/provider
+    this belongs to via CheckoutRequestID.
     """
     data = request.data
     logger.info("M-Pesa callback received: %s", data)
@@ -114,7 +192,7 @@ def mpesa_callback(request):
         return Response({"ResultCode": 1, "ResultDesc": "Malformed payload"}, status=200)
 
     try:
-        payment = Payment.objects.get(checkout_request_id=checkout_request_id)
+        payment = Payment.objects.select_related('invoice__customer').get(checkout_request_id=checkout_request_id)
     except Payment.DoesNotExist:
         logger.error("No matching payment for CheckoutRequestID %s", checkout_request_id)
         return Response({"ResultCode": 0, "ResultDesc": "Accepted"}, status=200)
@@ -123,14 +201,12 @@ def mpesa_callback(request):
     payment.result_desc = result_desc
 
     if result_code == 0:
-        # Successful payment - extract receipt details
         items = {i['Name']: i.get('Value') for i in stk_callback['CallbackMetadata']['Item']}
         payment.mpesa_receipt_number = items.get('MpesaReceiptNumber')
         payment.transaction_date = str(items.get('TransactionDate'))
         payment.status = 'completed'
         payment.save()
 
-        # Mark invoice paid and extend customer subscription
         invoice = payment.invoice
         invoice.status = 'paid'
         invoice.paid_at = timezone.now()
@@ -147,8 +223,45 @@ def mpesa_callback(request):
         payment.status = 'cancelled' if result_code == 1032 else 'failed'
         payment.save()
 
-    # Safaricom just needs a 200 OK acknowledgement
     return Response({"ResultCode": 0, "ResultDesc": "Accepted"}, status=200)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def dashboard_summary(request):
+    """Quick reporting endpoint: revenue, customer counts, overdue invoices - scoped to the caller's provider."""
+    today = timezone.now().date()
+
+    invoices = Invoice.objects.all()
+    customers = Customer.objects.all()
+    if not request.user.is_superuser:
+        provider = get_request_provider(request)
+        if provider is None:
+            return Response({"error": "No provider linked to this account"}, status=status.HTTP_403_FORBIDDEN)
+        invoices = invoices.filter(customer__provider=provider)
+        customers = customers.filter(provider=provider)
+
+    total_revenue = invoices.filter(status='paid').aggregate(total=Sum('amount'))['total'] or 0
+    this_month_revenue = invoices.filter(
+        status='paid', paid_at__year=today.year, paid_at__month=today.month
+    ).aggregate(total=Sum('amount'))['total'] or 0
+
+    customer_counts = customers.aggregate(
+        active=Count('id', filter=Q(status='active')),
+        suspended=Count('id', filter=Q(status='suspended')),
+        expired=Count('id', filter=Q(status='expired')),
+        total=Count('id'),
+    )
+
+    overdue_invoices = invoices.filter(status='pending', due_date__lt=today).count()
+
+    return Response({
+        "total_revenue": total_revenue,
+        "this_month_revenue": this_month_revenue,
+        "customers": customer_counts,
+        "overdue_invoices": overdue_invoices,
+    })
+
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
@@ -188,27 +301,3 @@ def create_superuser_once(request):
 
     User.objects.create_superuser(username=username, email=email, password=password)
     return Response({"message": f"Superuser '{username}' created. You can now log in at /admin/."})
-@api_view(['GET'])
-def dashboard_summary(request):
-    """Quick reporting endpoint: revenue, customer counts, overdue invoices."""
-    today = timezone.now().date()
-    total_revenue = Invoice.objects.filter(status='paid').aggregate(total=Sum('amount'))['total'] or 0
-    this_month_revenue = Invoice.objects.filter(
-        status='paid', paid_at__year=today.year, paid_at__month=today.month
-    ).aggregate(total=Sum('amount'))['total'] or 0
-
-    customer_counts = Customer.objects.aggregate(
-        active=Count('id', filter=Q(status='active')),
-        suspended=Count('id', filter=Q(status='suspended')),
-        expired=Count('id', filter=Q(status='expired')),
-        total=Count('id'),
-    )
-
-    overdue_invoices = Invoice.objects.filter(status='pending', due_date__lt=today).count()
-
-    return Response({
-        "total_revenue": total_revenue,
-        "this_month_revenue": this_month_revenue,
-        "customers": customer_counts,
-        "overdue_invoices": overdue_invoices,
-    })
