@@ -171,7 +171,10 @@ def create_superuser_once(request):
         return Response({"error": "Invalid or missing token"}, status=status.HTTP_403_FORBIDDEN)
 
     if User.objects.filter(is_superuser=True).exists():
-        return Response({"message": "A superuser already exists. Nothing to do."})
+        if request.GET.get('reset') == 'true':
+            User.objects.filter(is_superuser=True).delete()
+        else:
+            return Response({"message": "A superuser already exists. Add &reset=true to the URL to replace it."})
 
     username = getattr(django_settings, 'ADMIN_USERNAME', '')
     email = getattr(django_settings, 'ADMIN_EMAIL', '')
