@@ -15,4 +15,5 @@ urlpatterns = [
     path('mpesa/callback/', views.mpesa_callback, name='mpesa-callback'),
     path('reports/dashboard/', views.dashboard_summary, name='dashboard-summary'),
     path('setup/create-admin/', views.create_superuser_once, name='create-superuser-once'),
+    path('payments/<int:payment_id>/status/', views.payment_status, name='payment-status'),
 ]
