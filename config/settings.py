@@ -95,6 +95,11 @@ REST_FRAMEWORK = {
     ],
 }
 
+# ---- One-time admin setup (for hosts without shell access, e.g. Render free tier) ----
+SETUP_SECRET = config('SETUP_SECRET', default='')
+ADMIN_USERNAME = config('ADMIN_USERNAME', default='')
+ADMIN_EMAIL = config('ADMIN_EMAIL', default='')
+ADMIN_PASSWORD = config('ADMIN_PASSWORD', default='')
 # ---- M-Pesa Daraja API settings ----
 MPESA_ENV = config('MPESA_ENV', default='sandbox')  # 'sandbox' or 'production'
 MPESA_CONSUMER_KEY = config('MPESA_CONSUMER_KEY', default='')
