@@ -101,14 +101,8 @@ ADMIN_USERNAME = config('ADMIN_USERNAME', default='')
 ADMIN_EMAIL = config('ADMIN_EMAIL', default='')
 ADMIN_PASSWORD = config('ADMIN_PASSWORD', default='')
 # ---- M-Pesa Daraja API settings ----
-MPESA_ENV = config('MPESA_ENV', default='sandbox')  # 'sandbox' or 'production'
-MPESA_CONSUMER_KEY = config('MPESA_CONSUMER_KEY', default='')
-MPESA_CONSUMER_SECRET = config('MPESA_CONSUMER_SECRET', default='')
-MPESA_SHORTCODE = config('MPESA_SHORTCODE', default='174379')  # sandbox default Paybill
-MPESA_PASSKEY = config('MPESA_PASSKEY', default='')
+# Per-provider credentials (shortcode, consumer key/secret, passkey, env) now
+# live on the Provider model - see billing/models.py - since each WiFi
+# provider has their own Paybill/Till. Only the callback URL is shared,
+# since Safaricom always calls the same URL and we route by checkout_request_id.
 MPESA_CALLBACK_URL = config('MPESA_CALLBACK_URL', default='https://yourdomain.com/api/mpesa/callback/')
-
-MPESA_BASE_URL = (
-    'https://sandbox.safaricom.co.ke' if MPESA_ENV == 'sandbox'
-    else 'https://api.safaricom.co.ke'
-)
