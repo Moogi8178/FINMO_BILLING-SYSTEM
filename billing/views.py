@@ -3,9 +3,10 @@ from datetime import timedelta
 
 from django.utils import timezone
 from django.db.models import Sum, Count, Q
-from django.shortcuts import render, get_object_or_404
+from django.shortcuts import render, get_object_or_404, redirect
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
+from django.contrib.auth.decorators import login_required
 from rest_framework import viewsets, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -305,9 +306,6 @@ def create_superuser_once(request):
     return Response({"message": f"Superuser '{username}' created. You can now log in at /admin/."})
 
 
-from django.contrib.auth.decorators import login_required
-
-
 def _get_provider_or_none(request):
     return getattr(request.user, 'provider', None)
 
@@ -362,7 +360,6 @@ def plans_page(request):
                 provider=provider, name=name, speed_mbps=int(speed),
                 price=price, duration_days=int(duration or 30),
             )
-        from django.shortcuts import redirect
         return redirect('plans-page')
 
     packages = Package.objects.filter(provider=provider).order_by('price')
@@ -376,6 +373,10 @@ def invoices_page(request):
         return render(request, 'billing/no_provider.html')
     invoices = Invoice.objects.filter(customer__provider=provider).select_related('customer', 'package').order_by('-created_at')
     return render(request, 'billing/invoices.html', {'active': 'billing', 'provider': provider, 'invoices': invoices})
+
+
+@require_http_methods(["GET", "POST"])
+def purchase_page(request, slug):
     """
     Public self-service page: a WiFi customer picks a package and pays
     directly via M-Pesa STK push, no login or admin action needed.
@@ -433,7 +434,7 @@ def invoices_page(request):
             invoice.status = 'cancelled'
             invoice.save()
             logger.error("Self-service STK push failed for %s: %s", provider.business_name, e)
-            context['errors'] = [f"Could not start payment. Please try again in a moment."]
+            context['errors'] = ["Could not start payment. Please try again in a moment."]
             return render(request, 'billing/purchase.html', context)
 
         payment = Payment.objects.create(
