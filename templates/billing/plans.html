@@ -1,0 +1,30 @@
+{% extends "billing/base_dashboard.html" %}
+{% block page_title %}Plans{% endblock %}
+{% block page_heading %}Plans{% endblock %}
+{% block content %}
+<div class="section-title">Add a new plan</div>
+<form class="inline-form" method="post">
+  {% csrf_token %}
+  <div class="field"><label>Name</label><input type="text" name="name" required></div>
+  <div class="field"><label>Speed (Mbps)</label><input type="number" name="speed_mbps" required></div>
+  <div class="field"><label>Price (KES)</label><input type="number" name="price" step="0.01" required></div>
+  <div class="field"><label>Duration (days)</label><input type="number" name="duration_days" value="30"></div>
+  <button class="btn" type="submit">Add plan</button>
+</form>
+
+<div class="section-title">Your plans</div>
+<table>
+  <tr><th>Name</th><th>Speed</th><th>Price</th><th>Duration</th><th>Active</th></tr>
+  {% for pkg in packages %}
+  <tr>
+    <td>{{ pkg.name }}</td>
+    <td>{{ pkg.speed_mbps }} Mbps</td>
+    <td>KES {{ pkg.price }}</td>
+    <td>{{ pkg.duration_days }} days</td>
+    <td>{% if pkg.is_active %}<span class="badge badge-active">Active</span>{% else %}—{% endif %}</td>
+  </tr>
+  {% empty %}
+  <tr><td colspan="5" class="empty-hint">No plans yet. Add one above.</td></tr>
+  {% endfor %}
+</table>
+{% endblock %}
