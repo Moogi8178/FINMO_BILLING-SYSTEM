@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ provider.business_name }} - Check your phone</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #f4f6f8;
+    margin: 0;
+    padding: 20px 16px 40px;
+    color: #1a1a1a;
+  }
+  .card {
+    max-width: 420px;
+    margin: 40px auto 0;
+    background: #fff;
+    border-radius: 14px;
+    padding: 32px 24px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.06);
+    text-align: center;
+  }
+  .icon {
+    font-size: 2.5rem;
+    margin-bottom: 8px;
+  }
+  h1 {
+    font-size: 1.2rem;
+    margin: 0 0 8px;
+  }
+  p {
+    color: #555;
+    font-size: 0.95rem;
+    line-height: 1.5;
+  }
+  .phone {
+    font-weight: 700;
+    color: #1a1a1a;
+  }
+  .status-badge {
+    display: inline-block;
+    margin-top: 20px;
+    padding: 8px 16px;
+    border-radius: 999px;
+    font-size: 0.85rem;
+    font-weight: 600;
+  }
+  .status-pending { background: #fff4e5; color: #9a6700; }
+  .status-completed { background: #e6f7ec; color: #1a7f37; }
+  .status-failed { background: #fdecea; color: #b3261e; }
+  .spinner {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border: 2px solid #9a6700;
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin-right: 8px;
+    vertical-align: middle;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  a.retry {
+    display: inline-block;
+    margin-top: 20px;
+    color: #2563eb;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 0.9rem;
+  }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">📲</div>
+    <h1>Check your phone</h1>
+    <p>We've sent a payment request to <span class="phone">{{ phone_number }}</span> for the <strong>{{ package.name }}</strong> package (KES {{ package.price }}).</p>
+    <p>Enter your M-Pesa PIN on your phone to complete the purchase.</p>
+
+    <div id="status-badge" class="status-badge status-pending">
+      <span class="spinner"></span>Waiting for confirmation...
+    </div>
+
+    <div id="retry-link" style="display:none;">
+      <a class="retry" href="javascript:location.reload()">Try again</a>
+    </div>
+  </div>
+
+  <script>
+    const paymentId = {{ payment_id }};
+    const badge = document.getElementById('status-badge');
+    const retryLink = document.getElementById('retry-link');
+
+    function poll() {
+      fetch('/api/payments/' + paymentId + '/status/')
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+          if (data.status === 'completed') {
+            badge.className = 'status-badge status-completed';
+            badge.innerHTML = '&#10003; Payment successful! You are now connected.';
+          } else if (data.status === 'failed' || data.status === 'cancelled') {
+            badge.className = 'status-badge status-failed';
+            badge.innerHTML = '&#10007; ' + (data.result_desc || 'Payment did not go through.');
+            retryLink.style.display = 'block';
+          } else {
+            setTimeout(poll, 3000);
+          }
+        })
+        .catch(function() { setTimeout(poll, 5000); });
+    }
+    poll();
+  </script>
+</body>
+</html>
