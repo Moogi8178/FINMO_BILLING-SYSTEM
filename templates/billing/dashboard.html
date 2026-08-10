@@ -1,0 +1,33 @@
+{% extends "billing/base_dashboard.html" %}
+{% block page_title %}Overview{% endblock %}
+{% block page_heading %}Overview{% endblock %}
+{% block content %}
+<div class="cards-row">
+  <div class="card">
+    <div class="label">Revenue today</div>
+    <div class="value">KES {{ today_revenue }}</div>
+    <div class="sub">Total collected: KES {{ total_revenue }}</div>
+  </div>
+  <div class="card">
+    <div class="label">Active subscriptions</div>
+    <div class="value">{{ active_count }}</div>
+    <div class="sub">{{ total_customers }} total subscribers</div>
+  </div>
+</div>
+
+<div class="section-title">Recent payments</div>
+<table>
+  <tr><th>Customer</th><th>Phone</th><th>Amount</th><th>Status</th><th>When</th></tr>
+  {% for p in payments %}
+  <tr>
+    <td>{{ p.invoice.customer.full_name }}</td>
+    <td>{{ p.phone_number }}</td>
+    <td>KES {{ p.amount }}</td>
+    <td><span class="badge badge-{{ p.status }}">{{ p.get_status_display }}</span></td>
+    <td>{{ p.created_at|timesince }} ago</td>
+  </tr>
+  {% empty %}
+  <tr><td colspan="5" class="empty-hint">No payments yet.</td></tr>
+  {% endfor %}
+</table>
+{% endblock %}
