@@ -305,8 +305,77 @@ def create_superuser_once(request):
     return Response({"message": f"Superuser '{username}' created. You can now log in at /admin/."})
 
 
-@require_http_methods(["GET", "POST"])
-def purchase_page(request, slug):
+from django.contrib.auth.decorators import login_required
+
+
+def _get_provider_or_none(request):
+    return getattr(request.user, 'provider', None)
+
+
+@login_required
+def dashboard_page(request):
+    provider = _get_provider_or_none(request)
+    if provider is None:
+        return render(request, 'billing/no_provider.html')
+
+    today = timezone.now().date()
+    invoices = Invoice.objects.filter(customer__provider=provider)
+    customers = Customer.objects.filter(provider=provider)
+    payments = Payment.objects.filter(
+        invoice__customer__provider=provider
+    ).select_related('invoice__customer').order_by('-created_at')[:10]
+
+    context = {
+        'active': 'dashboard',
+        'provider': provider,
+        'total_revenue': invoices.filter(status='paid').aggregate(total=Sum('amount'))['total'] or 0,
+        'today_revenue': invoices.filter(status='paid', paid_at__date=today).aggregate(total=Sum('amount'))['total'] or 0,
+        'active_count': customers.filter(status='active').count(),
+        'total_customers': customers.count(),
+        'payments': payments,
+    }
+    return render(request, 'billing/dashboard.html', context)
+
+
+@login_required
+def subscribers_page(request):
+    provider = _get_provider_or_none(request)
+    if provider is None:
+        return render(request, 'billing/no_provider.html')
+    customers = Customer.objects.filter(provider=provider).select_related('package').order_by('-created_at')
+    return render(request, 'billing/subscribers.html', {'active': 'subscribers', 'provider': provider, 'customers': customers})
+
+
+@login_required
+def plans_page(request):
+    provider = _get_provider_or_none(request)
+    if provider is None:
+        return render(request, 'billing/no_provider.html')
+
+    if request.method == 'POST':
+        name = request.POST.get('name', '').strip()
+        speed = request.POST.get('speed_mbps', '').strip()
+        price = request.POST.get('price', '').strip()
+        duration = request.POST.get('duration_days', '30').strip()
+        if name and speed and price:
+            Package.objects.create(
+                provider=provider, name=name, speed_mbps=int(speed),
+                price=price, duration_days=int(duration or 30),
+            )
+        from django.shortcuts import redirect
+        return redirect('plans-page')
+
+    packages = Package.objects.filter(provider=provider).order_by('price')
+    return render(request, 'billing/plans.html', {'active': 'plans', 'provider': provider, 'packages': packages})
+
+
+@login_required
+def invoices_page(request):
+    provider = _get_provider_or_none(request)
+    if provider is None:
+        return render(request, 'billing/no_provider.html')
+    invoices = Invoice.objects.filter(customer__provider=provider).select_related('customer', 'package').order_by('-created_at')
+    return render(request, 'billing/invoices.html', {'active': 'billing', 'provider': provider, 'invoices': invoices})
     """
     Public self-service page: a WiFi customer picks a package and pays
     directly via M-Pesa STK push, no login or admin action needed.
