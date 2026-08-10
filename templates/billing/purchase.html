@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ provider.business_name }} - Buy WiFi</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #f4f6f8;
+    margin: 0;
+    padding: 20px 16px 40px;
+    color: #1a1a1a;
+  }
+  .card {
+    max-width: 420px;
+    margin: 0 auto;
+    background: #fff;
+    border-radius: 14px;
+    padding: 24px 20px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.06);
+  }
+  h1 {
+    font-size: 1.3rem;
+    margin: 0 0 4px;
+    text-align: center;
+  }
+  .subtitle {
+    text-align: center;
+    color: #666;
+    font-size: 0.9rem;
+    margin-bottom: 24px;
+  }
+  .errors {
+    background: #fdecea;
+    color: #b3261e;
+    padding: 10px 14px;
+    border-radius: 8px;
+    margin-bottom: 16px;
+    font-size: 0.9rem;
+  }
+  label {
+    display: block;
+    font-size: 0.85rem;
+    font-weight: 600;
+    margin-bottom: 6px;
+    margin-top: 16px;
+  }
+  input[type="text"], input[type="tel"] {
+    width: 100%;
+    padding: 12px 14px;
+    border: 1px solid #d5d9dd;
+    border-radius: 8px;
+    font-size: 1rem;
+  }
+  .packages {
+    margin-top: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .package-option {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border: 2px solid #e0e3e7;
+    border-radius: 10px;
+    padding: 14px;
+    cursor: pointer;
+  }
+  .package-option input { margin-right: 12px; }
+  .package-option.selected {
+    border-color: #2563eb;
+    background: #eef3ff;
+  }
+  .package-info { display: flex; align-items: center; }
+  .package-name { font-weight: 600; font-size: 0.95rem; }
+  .package-meta { font-size: 0.8rem; color: #666; margin-top: 2px; }
+  .package-price { font-weight: 700; color: #2563eb; }
+  button {
+    width: 100%;
+    margin-top: 24px;
+    padding: 14px;
+    background: #2563eb;
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button:active { background: #1d4ed8; }
+  .hint {
+    font-size: 0.8rem;
+    color: #888;
+    margin-top: 6px;
+  }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>{{ provider.business_name }}</h1>
+    <div class="subtitle">Choose a package and pay instantly via M-Pesa</div>
+
+    {% if errors %}
+      <div class="errors">
+        {% for error in errors %}{{ error }}<br>{% endfor %}
+      </div>
+    {% endif %}
+
+    {% if packages %}
+    <form method="post">
+      {% csrf_token %}
+      <label for="full_name">Your name</label>
+      <input type="text" id="full_name" name="full_name" value="{{ form_full_name|default:'' }}" required>
+
+      <label for="phone_number">M-Pesa phone number</label>
+      <input type="tel" id="phone_number" name="phone_number" placeholder="07XXXXXXXX" value="{{ form_phone_number|default:'' }}" required>
+      <div class="hint">You'll get a prompt on this number to enter your M-Pesa PIN.</div>
+
+      <label>Select a package</label>
+      <div class="packages">
+        {% for package in packages %}
+        <label class="package-option" onclick="selectPackage(this)">
+          <div class="package-info">
+            <input type="radio" name="package_id" value="{{ package.id }}" required>
+            <div>
+              <div class="package-name">{{ package.name }}</div>
+              <div class="package-meta">{{ package.speed_mbps }} Mbps &middot; {{ package.duration_days }} days</div>
+            </div>
+          </div>
+          <div class="package-price">KES {{ package.price }}</div>
+        </label>
+        {% endfor %}
+      </div>
+
+      <button type="submit">Pay now</button>
+    </form>
+    {% else %}
+      <div class="errors">No packages are currently available. Please contact {{ provider.business_name }} directly.</div>
+    {% endif %}
+  </div>
+
+  <script>
+    function selectPackage(el) {
+      document.querySelectorAll('.package-option').forEach(function(o) { o.classList.remove('selected'); });
+      el.classList.add('selected');
+    }
+  </script>
+</body>
+</html>
