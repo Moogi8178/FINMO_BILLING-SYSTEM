@@ -1,0 +1,60 @@
+{% extends "billing/base_dashboard.html" %}
+{% block page_title %}Billing{% endblock %}
+{% block page_heading %}Billing{% endblock %}
+{% block content %}
+{% csrf_token %}
+<table>
+  <tr><th>Invoice</th><th>Customer</th><th>Amount</th><th>Status</th><th>Due</th><th></th></tr>
+  {% for inv in invoices %}
+  <tr id="row-{{ inv.id }}">
+    <td>{{ inv.invoice_number }}</td>
+    <td>{{ inv.customer.full_name }}</td>
+    <td>KES {{ inv.amount }}</td>
+    <td><span class="badge badge-{{ inv.status }}">{{ inv.get_status_display }}</span></td>
+    <td>{{ inv.due_date }}</td>
+    <td>
+      {% if inv.status == 'pending' %}
+      <button class="btn" onclick="collectPayment({{ inv.id }}, this)">Collect payment</button>
+      {% endif %}
+    </td>
+  </tr>
+  {% empty %}
+  <tr><td colspan="6" class="empty-hint">No invoices yet.</td></tr>
+  {% endfor %}
+</table>
+
+<script>
+function getCookie(name) {
+  const value = `; ${document.cookie}`;
+  const parts = value.split(`; ${name}=`);
+  if (parts.length === 2) return parts.pop().split(';').shift();
+}
+function collectPayment(invoiceId, btn) {
+  btn.disabled = true;
+  btn.textContent = 'Sending...';
+  fetch('/api/mpesa/stkpush/', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRFToken': getCookie('csrftoken'),
+    },
+    body: JSON.stringify({invoice_id: invoiceId}),
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    if (data.error) {
+      alert(data.error);
+      btn.disabled = false;
+      btn.textContent = 'Collect payment';
+    } else {
+      btn.textContent = 'Sent — check phone';
+    }
+  })
+  .catch(function() {
+    alert('Something went wrong.');
+    btn.disabled = false;
+    btn.textContent = 'Collect payment';
+  });
+}
+</script>
+{% endblock %}
