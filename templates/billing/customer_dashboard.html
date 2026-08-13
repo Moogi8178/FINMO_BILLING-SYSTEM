@@ -27,6 +27,20 @@
   .btn { display:inline-block; padding:8px 14px; background:#10b981; color:#fff; border:none; border-radius:8px; font-size:0.82rem; font-weight:600; cursor:pointer; }
   .btn:hover { background:#059669; }
   .empty-hint { font-size:0.85rem; color:#6b7280; padding: 10px 14px; }
+  .packages { display:flex; flex-direction:column; gap:10px; }
+  .package-card {
+    background:#fff; border-radius:14px; padding:16px; box-shadow:0 1px 3px rgba(0,0,0,0.04);
+    display:flex; align-items:center; justify-content:space-between;
+  }
+  .package-card .name { font-weight:600; font-size:0.95rem; }
+  .package-card .meta { font-size:0.78rem; color:#666; margin-top:2px; }
+  .package-card .price { font-weight:700; color:#10b981; font-size:0.95rem; margin-right:12px; }
+  .package-right { display:flex; align-items:center; }
+  .status-banner {
+    display:none; background:#fff7ed; color:#9a6700; padding:12px 16px; border-radius:10px;
+    font-size:0.85rem; margin-bottom:16px; font-weight:600;
+  }
+  .status-banner.show { display:block; }
 </style>
 </head>
 <body>
@@ -35,6 +49,8 @@
     <h1>{{ provider.business_name }}</h1>
     <a href="{% url 'customer-logout' %}">Log out</a>
   </div>
+
+  <div id="status-banner" class="status-banner"></div>
 
   <div class="card">
     <div class="label">Your package</div>
@@ -46,6 +62,25 @@
   </div>
 
   {% csrf_token %}
+
+  <div class="section-title">Available packages</div>
+  <div class="packages">
+    {% for pkg in packages %}
+    <div class="package-card">
+      <div>
+        <div class="name">{{ pkg.name }}</div>
+        <div class="meta">{{ pkg.speed_mbps }} Mbps &middot; {{ pkg.duration_days }} days</div>
+      </div>
+      <div class="package-right">
+        <div class="price">KES {{ pkg.price }}</div>
+        <button class="btn" onclick="buyPackage({{ pkg.id }}, this)">Buy</button>
+      </div>
+    </div>
+    {% empty %}
+    <div class="empty-hint">No packages available right now.</div>
+    {% endfor %}
+  </div>
+
   <div class="section-title">Recent invoices</div>
   <table>
     <tr><th>Invoice</th><th>Amount</th><th>Status</th><th></th></tr>
@@ -56,7 +91,7 @@
       <td><span class="badge badge-{{ inv.status }}">{{ inv.get_status_display }}</span></td>
       <td>
         {% if inv.status == 'pending' %}
-        <button class="btn" onclick="payInvoice({{ inv.id }}, this)">Pay now</button>
+        <button class="btn" onclick="payExistingInvoice({{ inv.id }}, this)">Pay now</button>
         {% endif %}
       </td>
     </tr>
@@ -72,7 +107,56 @@ function getCookie(name) {
   const parts = value.split(`; ${name}=`);
   if (parts.length === 2) return parts.pop().split(';').shift();
 }
-function payInvoice(invoiceId, btn) {
+
+function showBanner(text) {
+  const banner = document.getElementById('status-banner');
+  banner.textContent = text;
+  banner.classList.add('show');
+}
+
+function pollPaymentStatus(paymentId) {
+  fetch('/api/payments/' + paymentId + '/status/')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.status === 'completed') {
+        showBanner('Payment successful! Reloading...');
+        setTimeout(function() { location.reload(); }, 1500);
+      } else if (data.status === 'failed' || data.status === 'cancelled') {
+        showBanner(data.result_desc || 'Payment did not go through. Try again.');
+      } else {
+        setTimeout(function() { pollPaymentStatus(paymentId); }, 3000);
+      }
+    })
+    .catch(function() { setTimeout(function() { pollPaymentStatus(paymentId); }, 5000); });
+}
+
+function buyPackage(packageId, btn) {
+  btn.disabled = true;
+  btn.textContent = 'Sending...';
+  fetch('/customer/buy/' + packageId + '/', {
+    method: 'POST',
+    headers: { 'X-CSRFToken': getCookie('csrftoken') },
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    if (data.error) {
+      alert(data.error);
+      btn.disabled = false;
+      btn.textContent = 'Buy';
+    } else {
+      showBanner('Check your phone — enter your M-Pesa PIN to complete payment.');
+      btn.textContent = 'Check phone';
+      pollPaymentStatus(data.payment_id);
+    }
+  })
+  .catch(function() {
+    alert('Something went wrong.');
+    btn.disabled = false;
+    btn.textContent = 'Buy';
+  });
+}
+
+function payExistingInvoice(invoiceId, btn) {
   btn.disabled = true;
   btn.textContent = 'Sending...';
   fetch('/api/mpesa/stkpush/', {
@@ -90,7 +174,9 @@ function payInvoice(invoiceId, btn) {
       btn.disabled = false;
       btn.textContent = 'Pay now';
     } else {
-      btn.textContent = 'Check your phone';
+      showBanner('Check your phone — enter your M-Pesa PIN to complete payment.');
+      btn.textContent = 'Check phone';
+      pollPaymentStatus(data.payment_id);
     }
   })
   .catch(function() {
