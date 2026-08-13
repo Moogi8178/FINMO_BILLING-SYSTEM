@@ -576,10 +576,62 @@ def customer_dashboard_page(request):
         return render(request, 'billing/no_provider.html')
 
     invoices = Invoice.objects.filter(customer=customer).order_by('-created_at')[:10]
+    packages = Package.objects.filter(provider=customer.provider, is_active=True).order_by('price')
     return render(request, 'billing/customer_dashboard.html', {
         'customer': customer,
         'provider': customer.provider,
         'invoices': invoices,
+        'packages': packages,
+    })
+
+
+@require_http_methods(["POST"])
+@login_required
+def customer_buy_package(request, package_id):
+    """
+    A logged-in customer selects a package to purchase/renew - creates an
+    invoice for themselves and triggers an STK push immediately.
+    """
+    from django.http import JsonResponse
+
+    customer = getattr(request.user, 'customer_profile', None)
+    if customer is None:
+        return JsonResponse({"error": "No customer account linked"}, status=403)
+
+    package = get_object_or_404(Package, id=package_id, provider=customer.provider, is_active=True)
+
+    invoice = Invoice.objects.create(
+        customer=customer, package=package, amount=package.price,
+        due_date=timezone.now().date(),
+    )
+
+    try:
+        result = mpesa.stk_push(
+            provider=customer.provider,
+            phone_number=customer.phone_number,
+            amount=package.price,
+            account_reference=invoice.invoice_number,
+            description=f"WiFi-{package.name}",
+        )
+    except mpesa.MpesaError as e:
+        invoice.status = 'cancelled'
+        invoice.save()
+        logger.error("Customer self-buy STK push failed for %s: %s", customer.full_name, e)
+        return JsonResponse({"error": "Could not start payment. Please try again in a moment."}, status=502)
+
+    payment = Payment.objects.create(
+        invoice=invoice,
+        phone_number=customer.phone_number,
+        amount=package.price,
+        merchant_request_id=result.get('MerchantRequestID'),
+        checkout_request_id=result.get('CheckoutRequestID'),
+        status='pending' if result.get('ResponseCode') == '0' else 'failed',
+        result_desc=result.get('ResponseDescription', ''),
+    )
+
+    return JsonResponse({
+        "message": "STK push sent. Check your phone to enter your M-Pesa PIN.",
+        "payment_id": payment.id,
     })
 
 
