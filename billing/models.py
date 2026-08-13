@@ -87,6 +87,11 @@ class Customer(models.Model):
     ]
 
     provider = models.ForeignKey(Provider, on_delete=models.CASCADE, related_name='customers')
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='customer_profile',
+        help_text="Linked login account, if this customer has registered for self-service access"
+    )
     full_name = models.CharField(max_length=150)
     phone_number = models.CharField(
         max_length=15,
