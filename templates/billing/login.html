@@ -6,8 +6,16 @@
 <title>Log in - Finmo</title>
 <style>
   * { box-sizing: border-box; margin:0; padding:0; }
-  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f4f6f8; display:flex; align-items:center; justify-content:center; min-height:100vh; padding:20px; }
-  .card { background:#fff; border-radius:14px; padding:32px 28px; max-width:360px; width:100%; box-shadow:0 2px 10px rgba(0,0,0,0.06); }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: linear-gradient(135deg, #0c2b4a 0%, #0f766e 100%);
+    display:flex; align-items:center; justify-content:center; min-height:100vh; padding:20px;
+    position: relative; overflow: hidden;
+  }
+  .bg-icon { position: absolute; opacity: 0.12; color: #fff; }
+  .bg-icon.top-right { top: -40px; right: -40px; width: 260px; height: 260px; }
+  .bg-icon.bottom-left { bottom: -50px; left: -50px; width: 220px; height: 220px; }
+  .card { background:#fff; border-radius:14px; padding:32px 28px; max-width:360px; width:100%; box-shadow:0 8px 30px rgba(0,0,0,0.2); position: relative; z-index: 1; }
   .brand { display:flex; align-items:center; gap:8px; font-weight:700; font-size:1.2rem; margin-bottom:4px; justify-content:center; }
   .brand .dot { width:10px; height:10px; border-radius:50%; background:#10b981; }
   .subtitle { text-align:center; color:#666; font-size:0.9rem; margin-bottom:24px; }
@@ -19,6 +27,14 @@
 </style>
 </head>
 <body>
+  <svg class="bg-icon top-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+    <path d="M5 13a10 10 0 0 1 14 0"/><path d="M8.5 16.5a5 5 0 0 1 7 0"/>
+    <circle cx="12" cy="20" r="1" fill="currentColor" stroke="none"/><path d="M2 9a15 15 0 0 1 20 0"/>
+  </svg>
+  <svg class="bg-icon bottom-left" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+    <path d="M5 13a10 10 0 0 1 14 0"/><path d="M8.5 16.5a5 5 0 0 1 7 0"/>
+    <circle cx="12" cy="20" r="1" fill="currentColor" stroke="none"/><path d="M2 9a15 15 0 0 1 20 0"/>
+  </svg>
   <div class="card">
     <div class="brand"><span class="dot"></span>Finmo</div>
     <div class="subtitle">ISP Billing &middot; sign in to your dashboard</div>
