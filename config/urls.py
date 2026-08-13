@@ -8,7 +8,6 @@ urlpatterns = [
     path('api/', include('billing.urls')),
     path('pay/<slug:slug>/', billing_views.purchase_page, name='purchase-page'),
 
-    # Provider (WiFi business owner) dashboard
     path('login/', auth_views.LoginView.as_view(template_name='billing/login.html'), name='login'),
     path('logout/', auth_views.LogoutView.as_view(next_page='login'), name='logout'),
     path('dashboard/', billing_views.dashboard_page, name='dashboard-page'),
@@ -16,9 +15,9 @@ urlpatterns = [
     path('dashboard/plans/', billing_views.plans_page, name='plans-page'),
     path('dashboard/billing/', billing_views.invoices_page, name='invoices-page'),
 
-    # Customer (WiFi subscriber) self-service accounts
     path('customer/register/<slug:slug>/', billing_views.customer_register_page, name='customer-register'),
     path('customer/login/<slug:slug>/', billing_views.customer_login_page, name='customer-login'),
     path('customer/dashboard/', billing_views.customer_dashboard_page, name='customer-dashboard'),
     path('customer/logout/', billing_views.customer_logout_page, name='customer-logout'),
+    path('customer/buy/<int:package_id>/', billing_views.customer_buy_package, name='customer-buy-package'),
 ]
