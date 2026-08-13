@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ provider.business_name }} - My account</title>
+<style>
+  * { box-sizing: border-box; margin:0; padding:0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f4f6f8; color:#1a1a1a; padding: 20px 16px 40px; }
+  .wrap { max-width: 460px; margin: 0 auto; }
+  .top { display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; }
+  .top h1 { font-size:1.1rem; }
+  .top a { font-size:0.85rem; color:#6b7280; text-decoration:none; }
+  .card { background:#fff; border-radius:14px; padding:20px; box-shadow:0 1px 3px rgba(0,0,0,0.04); margin-bottom:16px; }
+  .label { font-size:0.78rem; color:#6b7280; text-transform:uppercase; letter-spacing:0.03em; margin-bottom:6px; }
+  .value { font-size:1.4rem; font-weight:700; }
+  .sub { font-size:0.85rem; color:#666; margin-top:4px; }
+  .badge { display:inline-block; padding:3px 10px; border-radius:999px; font-size:0.75rem; font-weight:600; }
+  .badge-active, .badge-paid, .badge-completed { background:#ecfdf5; color:#059669; }
+  .badge-pending { background:#fff7ed; color:#c2650a; }
+  .badge-expired, .badge-suspended, .badge-failed, .badge-cancelled { background:#fef2f2; color:#dc2626; }
+  .section-title { font-size:0.95rem; font-weight:700; margin: 20px 0 10px; }
+  table { width:100%; border-collapse:collapse; background:#fff; border-radius:14px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,0.04); }
+  th, td { text-align:left; padding:10px 14px; font-size:0.85rem; border-bottom:1px solid #f0f1f3; }
+  th { color:#6b7280; font-weight:600; font-size:0.72rem; text-transform:uppercase; background:#fafbfc; }
+  tr:last-child td { border-bottom:none; }
+  .btn { display:inline-block; padding:8px 14px; background:#10b981; color:#fff; border:none; border-radius:8px; font-size:0.82rem; font-weight:600; cursor:pointer; }
+  .btn:hover { background:#059669; }
+  .empty-hint { font-size:0.85rem; color:#6b7280; padding: 10px 14px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <h1>{{ provider.business_name }}</h1>
+    <a href="{% url 'customer-logout' %}">Log out</a>
+  </div>
+
+  <div class="card">
+    <div class="label">Your package</div>
+    <div class="value">{{ customer.package.name|default:"No package" }}</div>
+    <div class="sub">
+      Status: <span class="badge badge-{{ customer.status }}">{{ customer.get_status_display }}</span>
+      {% if customer.subscription_end %} &middot; Expires {{ customer.subscription_end }}{% endif %}
+    </div>
+  </div>
+
+  {% csrf_token %}
+  <div class="section-title">Recent invoices</div>
+  <table>
+    <tr><th>Invoice</th><th>Amount</th><th>Status</th><th></th></tr>
+    {% for inv in invoices %}
+    <tr id="inv-row-{{ inv.id }}">
+      <td>{{ inv.invoice_number }}</td>
+      <td>KES {{ inv.amount }}</td>
+      <td><span class="badge badge-{{ inv.status }}">{{ inv.get_status_display }}</span></td>
+      <td>
+        {% if inv.status == 'pending' %}
+        <button class="btn" onclick="payInvoice({{ inv.id }}, this)">Pay now</button>
+        {% endif %}
+      </td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="4" class="empty-hint">No invoices yet.</td></tr>
+    {% endfor %}
+  </table>
+</div>
+
+<script>
+function getCookie(name) {
+  const value = `; ${document.cookie}`;
+  const parts = value.split(`; ${name}=`);
+  if (parts.length === 2) return parts.pop().split(';').shift();
+}
+function payInvoice(invoiceId, btn) {
+  btn.disabled = true;
+  btn.textContent = 'Sending...';
+  fetch('/api/mpesa/stkpush/', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRFToken': getCookie('csrftoken'),
+    },
+    body: JSON.stringify({invoice_id: invoiceId}),
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    if (data.error) {
+      alert(data.error);
+      btn.disabled = false;
+      btn.textContent = 'Pay now';
+    } else {
+      btn.textContent = 'Check your phone';
+    }
+  })
+  .catch(function() {
+    alert('Something went wrong.');
+    btn.disabled = false;
+    btn.textContent = 'Pay now';
+  });
+}
+</script>
+</body>
+</html>
