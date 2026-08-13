@@ -126,10 +126,13 @@ def initiate_payment(request):
     except Invoice.DoesNotExist:
         return Response({"error": "Invoice not found"}, status=status.HTTP_404_NOT_FOUND)
 
-    # Access control: only the owning provider (or a superuser) may trigger this
+    # Access control: the owning provider, the invoice's own customer, or a superuser may trigger this
     if not request.user.is_superuser:
         provider = get_request_provider(request)
-        if provider is None or invoice.customer.provider_id != provider.id:
+        customer_profile = getattr(request.user, 'customer_profile', None)
+        is_owning_provider = provider is not None and invoice.customer.provider_id == provider.id
+        is_owning_customer = customer_profile is not None and invoice.customer_id == customer_profile.id
+        if not (is_owning_provider or is_owning_customer):
             return Response({"error": "Not permitted for this invoice"}, status=status.HTTP_403_FORBIDDEN)
 
     if invoice.status == 'paid':
@@ -286,12 +289,6 @@ def create_superuser_once(request):
     if not expected_token or token != expected_token:
         return Response({"error": "Invalid or missing token"}, status=status.HTTP_403_FORBIDDEN)
 
-    if User.objects.filter(is_superuser=True).exists():
-        if request.GET.get('reset') == 'true':
-            User.objects.filter(is_superuser=True).delete()
-        else:
-            return Response({"message": "A superuser already exists. Add &reset=true to the URL to replace it."})
-
     username = getattr(django_settings, 'ADMIN_USERNAME', '')
     email = getattr(django_settings, 'ADMIN_EMAIL', '')
     password = getattr(django_settings, 'ADMIN_PASSWORD', '')
@@ -301,6 +298,19 @@ def create_superuser_once(request):
             {"error": "Set ADMIN_USERNAME and ADMIN_PASSWORD env vars first"},
             status=status.HTTP_400_BAD_REQUEST,
         )
+
+    existing_superuser = User.objects.filter(is_superuser=True).first()
+    if existing_superuser is not None:
+        if request.GET.get('reset') == 'true':
+            # Update in place rather than delete+recreate - deleting would
+            # cascade through Provider -> Package -> Invoice, which is
+            # blocked by Invoice.package's on_delete=PROTECT.
+            existing_superuser.username = username
+            existing_superuser.email = email
+            existing_superuser.set_password(password)
+            existing_superuser.save()
+            return Response({"message": f"Superuser '{username}' updated. You can now log in at /admin/."})
+        return Response({"message": "A superuser already exists. Add &reset=true to the URL to update its credentials."})
 
     User.objects.create_superuser(username=username, email=email, password=password)
     return Response({"message": f"Superuser '{username}' created. You can now log in at /admin/."})
@@ -469,3 +479,117 @@ def payment_status(request, payment_id):
         "status": payment.status,
         "result_desc": payment.result_desc,
     })
+
+
+def _customer_username(provider, phone_number):
+    """Usernames must be globally unique in Django's auth_user table, but
+    phone numbers are only unique per-provider - so we namespace by provider id."""
+    return f"p{provider.id}_{phone_number}"
+
+
+@require_http_methods(["GET", "POST"])
+def customer_register_page(request, slug):
+    """
+    Self-service account creation for a WiFi customer, scoped to one provider.
+    URL: /customer/register/<provider-slug>/
+    """
+    from django.contrib.auth.models import User
+    from django.contrib.auth import login as auth_login
+
+    provider = get_object_or_404(Provider, slug=slug, is_active=True)
+    context = {'provider': provider}
+
+    if request.method == 'POST':
+        full_name = request.POST.get('full_name', '').strip()
+        phone_number = request.POST.get('phone_number', '').strip()
+        email = request.POST.get('email', '').strip()
+        password = request.POST.get('password', '')
+
+        errors = []
+        if not full_name:
+            errors.append("Please enter your name.")
+        if not phone_number:
+            errors.append("Please enter your phone number.")
+        if not password or len(password) < 6:
+            errors.append("Password must be at least 6 characters.")
+
+        normalized_phone = mpesa.normalize_phone(phone_number) if phone_number else ''
+        username = _customer_username(provider, normalized_phone) if normalized_phone else ''
+
+        if normalized_phone and Customer.objects.filter(provider=provider, phone_number=normalized_phone, user__isnull=False).exists():
+            errors.append("An account already exists for this phone number. Try logging in instead.")
+
+        if errors:
+            context['errors'] = errors
+            context['form_full_name'] = full_name
+            context['form_phone_number'] = phone_number
+            context['form_email'] = email
+            return render(request, 'billing/customer_register.html', context)
+
+        user = User.objects.create_user(username=username, email=email, password=password)
+        customer, _ = Customer.objects.get_or_create(
+            provider=provider, phone_number=normalized_phone,
+            defaults={'full_name': full_name, 'status': 'active'},
+        )
+        customer.user = user
+        customer.full_name = full_name
+        if email:
+            customer.email = email
+        customer.save()
+
+        auth_login(request, user)
+        return redirect('customer-dashboard')
+
+    return render(request, 'billing/customer_register.html', context)
+
+
+@require_http_methods(["GET", "POST"])
+def customer_login_page(request, slug):
+    """Self-service login for a WiFi customer, scoped to one provider."""
+    from django.contrib.auth import authenticate, login as auth_login
+
+    provider = get_object_or_404(Provider, slug=slug, is_active=True)
+    context = {'provider': provider}
+
+    if request.method == 'POST':
+        phone_number = request.POST.get('phone_number', '').strip()
+        password = request.POST.get('password', '')
+        normalized_phone = mpesa.normalize_phone(phone_number) if phone_number else ''
+        username = _customer_username(provider, normalized_phone) if normalized_phone else ''
+
+        user = authenticate(request, username=username, password=password)
+        if user is not None:
+            auth_login(request, user)
+            return redirect('customer-dashboard')
+
+        context['errors'] = ["Incorrect phone number or password."]
+        context['form_phone_number'] = phone_number
+
+    return render(request, 'billing/customer_login.html', context)
+
+
+@login_required
+def customer_dashboard_page(request):
+    """A WiFi customer's own subscription dashboard: package, status, invoices, pay button."""
+    customer = getattr(request.user, 'customer_profile', None)
+    if customer is None:
+        return render(request, 'billing/no_provider.html')
+
+    invoices = Invoice.objects.filter(customer=customer).order_by('-created_at')[:10]
+    return render(request, 'billing/customer_dashboard.html', {
+        'customer': customer,
+        'provider': customer.provider,
+        'invoices': invoices,
+    })
+
+
+def customer_logout_page(request):
+    from django.contrib.auth import logout as auth_logout
+    provider_slug = None
+    customer = getattr(request.user, 'customer_profile', None)
+    if customer is not None:
+        provider_slug = customer.provider.slug
+    auth_logout(request)
+    if provider_slug:
+        return redirect('customer-login', slug=provider_slug)
+    return redirect('login')
