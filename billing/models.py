@@ -204,3 +204,104 @@ class CommissionRecord(models.Model):
 
     def __str__(self):
         return f"{self.provider.business_name} - {self.period_start} to {self.period_end} - KES {self.commission_amount} ({self.status})"
+        class Lead(models.Model):
+    """A prospective customer who hasn't signed up yet."""
+    STATUS_CHOICES = [
+        ('new', 'New'),
+        ('contacted', 'Contacted'),
+        ('converted', 'Converted'),
+        ('lost', 'Lost'),
+    ]
+    provider = models.ForeignKey(Provider, on_delete=models.CASCADE, related_name='leads')
+    full_name = models.CharField(max_length=150)
+    phone_number = models.CharField(max_length=15, blank=True)
+    notes = models.TextField(blank=True)
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='new')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.full_name} ({self.get_status_display()})"
+
+
+class Ticket(models.Model):
+    """A support request from a customer or about a lead."""
+    STATUS_CHOICES = [
+        ('open', 'Open'),
+        ('in_progress', 'In Progress'),
+        ('closed', 'Closed'),
+    ]
+    provider = models.ForeignKey(Provider, on_delete=models.CASCADE, related_name='tickets')
+    customer = models.ForeignKey(Customer, on_delete=models.SET_NULL, null=True, blank=True, related_name='tickets')
+    subject = models.CharField(max_length=200)
+    message = models.TextField(blank=True)
+    status = models.CharField(max_length=12, choices=STATUS_CHOICES, default='open')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.subject} ({self.get_status_display()})"
+
+
+class Device(models.Model):
+    """
+    Manually-tracked inventory of network equipment (routers, access points,
+    fiber links). This is a simple record, not live telemetry - actual
+    online/offline status requires integrating with the device's own API
+    (e.g. MikroTik RouterOS) or a RADIUS server, which isn't wired in yet.
+    """
+    CATEGORY_CHOICES = [
+        ('router', 'Router'),
+        ('access_point', 'Access Point'),
+        ('fiber_link', 'Fiber Link'),
+        ('other', 'Other'),
+    ]
+    STATUS_CHOICES = [
+        ('active', 'Active'),
+        ('maintenance', 'Maintenance'),
+        ('retired', 'Retired'),
+    ]
+    provider = models.ForeignKey(Provider, on_delete=models.CASCADE, related_name='devices')
+    name = models.CharField(max_length=150)
+    category = models.CharField(max_length=15, choices=CATEGORY_CHOICES, default='router')
+    location = models.CharField(max_length=200, blank=True)
+    serial_number = models.CharField(max_length=100, blank=True)
+    status = models.CharField(max_length=12, choices=STATUS_CHOICES, default='active')
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.name} ({self.get_category_display()})"
+
+
+class Voucher(models.Model):
+    """A prepaid access code for a package, redeemable by a customer."""
+    STATUS_CHOICES = [
+        ('unused', 'Unused'),
+        ('used', 'Used'),
+    ]
+    provider = models.ForeignKey(Provider, on_delete=models.CASCADE, related_name='vouchers')
+    code = models.CharField(max_length=20, unique=True, editable=False)
+    package = models.ForeignKey(Package, on_delete=models.CASCADE, related_name='vouchers')
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='unused')
+    used_by = models.ForeignKey(Customer, on_delete=models.SET_NULL, null=True, blank=True, related_name='redeemed_vouchers')
+    used_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def save(self, *args, **kwargs):
+        if not self.code:
+            self.code = uuid.uuid4().hex[:10].upper()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.code} - {self.package.name} ({self.get_status_display()})"
+
+
+class Announcement(models.Model):
+    """A message a provider broadcasts to their customers (shown on the customer dashboard)."""
+    provider = models.ForeignKey(Provider, on_delete=models.CASCADE, related_name='announcements')
+    message = models.CharField(max_length=300)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.message[:50]
