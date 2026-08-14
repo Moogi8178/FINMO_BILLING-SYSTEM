@@ -15,6 +15,12 @@ urlpatterns = [
     path('dashboard/subscribers/', billing_views.subscribers_page, name='subscribers-page'),
     path('dashboard/plans/', billing_views.plans_page, name='plans-page'),
     path('dashboard/billing/', billing_views.invoices_page, name='invoices-page'),
+    path('dashboard/leads/', billing_views.leads_page, name='leads-page'),
+    path('dashboard/tickets/', billing_views.tickets_page, name='tickets-page'),
+    path('dashboard/devices/', billing_views.devices_page, name='devices-page'),
+    path('dashboard/vouchers/', billing_views.vouchers_page, name='vouchers-page'),
+    path('dashboard/communications/', billing_views.communications_page, name='communications-page'),
+    path('dashboard/analytics/', billing_views.analytics_page, name='analytics-page'),
 
     # Customer (WiFi subscriber) self-service accounts
     path('customer/register/<slug:slug>/', billing_views.customer_register_page, name='customer-register'),
