@@ -1,0 +1,44 @@
+{% extends "billing/base_dashboard.html" %}
+{% block page_title %}Analytics{% endblock %}
+{% block page_heading %}Analytics{% endblock %}
+{% block content %}
+<div class="cards-row">
+  <div class="card">
+    <div class="label">Total subscribers</div>
+    <div class="value">{{ total_customers }}</div>
+  </div>
+  <div class="card">
+    <div class="label">Active subscribers</div>
+    <div class="value">{{ active_customers }}</div>
+  </div>
+</div>
+
+<div class="section-title">Revenue - last 14 days</div>
+<div class="card">
+  <canvas id="revenueChart" height="90"></canvas>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script>
+  const ctx = document.getElementById('revenueChart').getContext('2d');
+  new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: {{ chart_labels_json|safe }},
+      datasets: [{
+        label: 'Revenue (KES)',
+        data: {{ chart_values_json|safe }},
+        borderColor: '#10b981',
+        backgroundColor: 'rgba(16,185,129,0.1)',
+        tension: 0.3,
+        fill: true,
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: { y: { beginAtZero: true } }
+    }
+  });
+</script>
+{% endblock %}
