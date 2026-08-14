@@ -510,6 +510,8 @@ def customer_register_page(request, slug):
             errors.append("Please enter your name.")
         if not phone_number:
             errors.append("Please enter your phone number.")
+        if not email:
+            errors.append("Please enter your email (needed for password reset).")
         if not password or len(password) < 6:
             errors.append("Password must be at least 6 characters.")
 
