@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Provider, Package, Customer, Invoice, Payment, CommissionRecord
+from .models import Provider, Package, Customer, Invoice, Payment, CommissionRecord, Lead, Ticket, Device, Voucher, Announcement
 
 
 class ProviderScopedAdmin(admin.ModelAdmin):
@@ -105,3 +105,31 @@ class CommissionRecordAdmin(admin.ModelAdmin):
 
     def has_module_permission(self, request):
         return request.user.is_superuser
+@admin.register(Lead)
+class LeadAdmin(ProviderScopedAdmin):
+    list_display = ('full_name', 'phone_number', 'status', 'provider', 'created_at')
+    list_filter = ('status',)
+
+
+@admin.register(Ticket)
+class TicketAdmin(ProviderScopedAdmin):
+    list_display = ('subject', 'customer', 'status', 'provider', 'created_at')
+    list_filter = ('status',)
+
+
+@admin.register(Device)
+class DeviceAdmin(ProviderScopedAdmin):
+    list_display = ('name', 'category', 'status', 'location', 'provider')
+    list_filter = ('category', 'status')
+
+
+@admin.register(Voucher)
+class VoucherAdmin(ProviderScopedAdmin):
+    list_display = ('code', 'package', 'status', 'used_by', 'provider')
+    list_filter = ('status',)
+
+
+@admin.register(Announcement)
+class AnnouncementAdmin(ProviderScopedAdmin):
+    list_display = ('message', 'is_active', 'provider', 'created_at')
+    list_filter = ('is_active',)
