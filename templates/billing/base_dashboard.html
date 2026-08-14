@@ -33,6 +33,10 @@
   .badge-paid, .badge-active, .badge-completed { background: #ecfdf5; color: #059669; }
   .badge-pending { background: #fff7ed; color: #c2650a; }
   .badge-failed, .badge-cancelled, .badge-expired, .badge-suspended, .badge-overdue { background: #fef2f2; color: #dc2626; }
+  .badge-new, .badge-open, .badge-unused { background: #eff6ff; color: #2563eb; }
+  .badge-contacted, .badge-in_progress, .badge-maintenance { background: #fff7ed; color: #c2650a; }
+  .badge-converted, .badge-used, .badge-closed { background: #ecfdf5; color: #059669; }
+  .badge-lost, .badge-retired { background: #f3f4f6; color: #6b7280; }
   .btn { display: inline-block; padding: 8px 16px; background: #10b981; color: #fff; border: none; border-radius: 8px; font-size: 0.85rem; font-weight: 600; cursor: pointer; text-decoration: none; }
   .btn:hover { background: #059669; }
   .section-title { font-size: 1rem; font-weight: 700; margin-bottom: 12px; }
@@ -55,10 +59,18 @@
     <a class="nav-link {% if active == 'dashboard' %}active{% endif %}" href="{% url 'dashboard-page' %}">Overview</a>
     <div class="nav-section">Customers</div>
     <a class="nav-link {% if active == 'subscribers' %}active{% endif %}" href="{% url 'subscribers-page' %}">Subscribers</a>
+    <a class="nav-link {% if active == 'leads' %}active{% endif %}" href="{% url 'leads-page' %}">Leads</a>
+    <a class="nav-link {% if active == 'tickets' %}active{% endif %}" href="{% url 'tickets-page' %}">Tickets</a>
     <div class="nav-section">Network</div>
     <a class="nav-link {% if active == 'plans' %}active{% endif %}" href="{% url 'plans-page' %}">Plans</a>
+    <a class="nav-link {% if active == 'devices' %}active{% endif %}" href="{% url 'devices-page' %}">Devices</a>
     <div class="nav-section">Finance</div>
     <a class="nav-link {% if active == 'billing' %}active{% endif %}" href="{% url 'invoices-page' %}">Billing</a>
+    <a class="nav-link {% if active == 'vouchers' %}active{% endif %}" href="{% url 'vouchers-page' %}">Vouchers</a>
+    <div class="nav-section">Outreach</div>
+    <a class="nav-link {% if active == 'communications' %}active{% endif %}" href="{% url 'communications-page' %}">Communications</a>
+    <div class="nav-section">Insights</div>
+    <a class="nav-link {% if active == 'analytics' %}active{% endif %}" href="{% url 'analytics-page' %}">Analytics</a>
   </div>
   <div class="main">
     <div class="topbar">
