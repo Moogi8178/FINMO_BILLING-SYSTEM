@@ -1,0 +1,33 @@
+{% extends "billing/base_dashboard.html" %}
+{% block page_title %}Vouchers{% endblock %}
+{% block page_heading %}Vouchers{% endblock %}
+{% block content %}
+<div class="section-title">Generate vouchers</div>
+<form class="inline-form" method="post">
+  {% csrf_token %}
+  <div class="field">
+    <label>Package</label>
+    <select name="package_id" style="padding:8px 10px; border:1px solid #d5d9dd; border-radius:6px; font-size:0.9rem; width:160px;" required>
+      {% for pkg in packages %}<option value="{{ pkg.id }}">{{ pkg.name }} - KES {{ pkg.price }}</option>{% endfor %}
+    </select>
+  </div>
+  <div class="field"><label>How many</label><input type="number" name="count" value="1" min="1" max="50" style="width:80px;"></div>
+  <button class="btn" type="submit">Generate</button>
+</form>
+
+<div class="section-title">Vouchers</div>
+<table>
+  <tr><th>Code</th><th>Package</th><th>Status</th><th>Used by</th><th>Created</th></tr>
+  {% for v in vouchers %}
+  <tr>
+    <td><code>{{ v.code }}</code></td>
+    <td>{{ v.package.name }}</td>
+    <td><span class="badge badge-{{ v.status }}">{{ v.get_status_display }}</span></td>
+    <td>{{ v.used_by.full_name|default:"—" }}</td>
+    <td>{{ v.created_at|timesince }} ago</td>
+  </tr>
+  {% empty %}
+  <tr><td colspan="5" class="empty-hint">No vouchers yet. Generate some above.</td></tr>
+  {% endfor %}
+</table>
+{% endblock %}
