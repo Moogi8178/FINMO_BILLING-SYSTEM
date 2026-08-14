@@ -1,0 +1,28 @@
+{% extends "billing/base_dashboard.html" %}
+{% block page_title %}Leads{% endblock %}
+{% block page_heading %}Leads{% endblock %}
+{% block content %}
+<div class="section-title">Add a lead</div>
+<form class="inline-form" method="post">
+  {% csrf_token %}
+  <div class="field"><label>Full name</label><input type="text" name="full_name" required></div>
+  <div class="field"><label>Phone</label><input type="text" name="phone_number"></div>
+  <div class="field" style="flex:1; min-width:200px;"><label>Notes</label><input type="text" name="notes" style="width:100%;"></div>
+  <button class="btn" type="submit">Add lead</button>
+</form>
+
+<div class="section-title">Your leads</div>
+<table>
+  <tr><th>Name</th><th>Phone</th><th>Status</th><th>Notes</th></tr>
+  {% for lead in leads %}
+  <tr>
+    <td>{{ lead.full_name }}</td>
+    <td>{{ lead.phone_number|default:"—" }}</td>
+    <td><span class="badge badge-{{ lead.status }}">{{ lead.get_status_display }}</span></td>
+    <td>{{ lead.notes|default:"—" }}</td>
+  </tr>
+  {% empty %}
+  <tr><td colspan="4" class="empty-hint">No leads yet. Add one above.</td></tr>
+  {% endfor %}
+</table>
+{% endblock %}
