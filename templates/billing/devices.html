@@ -1,0 +1,42 @@
+{% extends "billing/base_dashboard.html" %}
+{% block page_title %}Devices{% endblock %}
+{% block page_heading %}Devices{% endblock %}
+{% block content %}
+<div style="background:#eff6ff; color:#2563eb; padding:12px 16px; border-radius:10px; font-size:0.85rem; margin-bottom:16px;">
+  This is a manual equipment inventory — live status (online/offline, bandwidth, fiber/TR-069 telemetry) requires connecting real router hardware, which isn't wired in yet.
+</div>
+
+<div class="section-title">Add a device</div>
+<form class="inline-form" method="post">
+  {% csrf_token %}
+  <div class="field"><label>Name</label><input type="text" name="name" required></div>
+  <div class="field">
+    <label>Category</label>
+    <select name="category" style="padding:8px 10px; border:1px solid #d5d9dd; border-radius:6px; font-size:0.9rem; width:130px;">
+      <option value="router">Router</option>
+      <option value="access_point">Access Point</option>
+      <option value="fiber_link">Fiber Link</option>
+      <option value="other">Other</option>
+    </select>
+  </div>
+  <div class="field"><label>Location</label><input type="text" name="location"></div>
+  <div class="field"><label>Serial number</label><input type="text" name="serial_number"></div>
+  <button class="btn" type="submit">Add device</button>
+</form>
+
+<div class="section-title">Your devices</div>
+<table>
+  <tr><th>Name</th><th>Category</th><th>Location</th><th>Serial</th><th>Status</th></tr>
+  {% for d in devices %}
+  <tr>
+    <td>{{ d.name }}</td>
+    <td>{{ d.get_category_display }}</td>
+    <td>{{ d.location|default:"—" }}</td>
+    <td>{{ d.serial_number|default:"—" }}</td>
+    <td><span class="badge badge-{{ d.status }}">{{ d.get_status_display }}</span></td>
+  </tr>
+  {% empty %}
+  <tr><td colspan="5" class="empty-hint">No devices yet. Add one above.</td></tr>
+  {% endfor %}
+</table>
+{% endblock %}
