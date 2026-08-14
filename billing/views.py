@@ -12,7 +12,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
-from .models import Provider, Package, Customer, Invoice, Payment, CommissionRecord
+from .models import Provider, Package, Customer, Invoice, Payment, CommissionRecord, Lead, Ticket, Device, Voucher, Announcement
 from .serializers import (
     ProviderSerializer, PackageSerializer, CustomerSerializer, InvoiceSerializer,
     PaymentSerializer, InitiatePaymentSerializer,
@@ -383,7 +383,131 @@ def invoices_page(request):
         return render(request, 'billing/no_provider.html')
     invoices = Invoice.objects.filter(customer__provider=provider).select_related('customer', 'package').order_by('-created_at')
     return render(request, 'billing/invoices.html', {'active': 'billing', 'provider': provider, 'invoices': invoices})
+@login_required
+def leads_page(request):
+    provider = _get_provider_or_none(request)
+    if provider is None:
+        return render(request, 'billing/no_provider.html')
 
+    if request.method == 'POST':
+        full_name = request.POST.get('full_name', '').strip()
+        phone_number = request.POST.get('phone_number', '').strip()
+        notes = request.POST.get('notes', '').strip()
+        if full_name:
+            Lead.objects.create(provider=provider, full_name=full_name, phone_number=phone_number, notes=notes)
+        return redirect('leads-page')
+
+    leads = Lead.objects.filter(provider=provider).order_by('-created_at')
+    return render(request, 'billing/leads.html', {'active': 'leads', 'provider': provider, 'leads': leads})
+
+
+@login_required
+def tickets_page(request):
+    provider = _get_provider_or_none(request)
+    if provider is None:
+        return render(request, 'billing/no_provider.html')
+
+    if request.method == 'POST':
+        subject = request.POST.get('subject', '').strip()
+        message = request.POST.get('message', '').strip()
+        customer_id = request.POST.get('customer_id')
+        customer = Customer.objects.filter(id=customer_id, provider=provider).first() if customer_id else None
+        if subject:
+            Ticket.objects.create(provider=provider, subject=subject, message=message, customer=customer)
+        return redirect('tickets-page')
+
+    tickets = Ticket.objects.filter(provider=provider).select_related('customer').order_by('-created_at')
+    customers = Customer.objects.filter(provider=provider).order_by('full_name')
+    return render(request, 'billing/tickets.html', {'active': 'tickets', 'provider': provider, 'tickets': tickets, 'customers': customers})
+
+
+@login_required
+def devices_page(request):
+    provider = _get_provider_or_none(request)
+    if provider is None:
+        return render(request, 'billing/no_provider.html')
+
+    if request.method == 'POST':
+        name = request.POST.get('name', '').strip()
+        category = request.POST.get('category', 'router')
+        location = request.POST.get('location', '').strip()
+        serial_number = request.POST.get('serial_number', '').strip()
+        if name:
+            Device.objects.create(provider=provider, name=name, category=category, location=location, serial_number=serial_number)
+        return redirect('devices-page')
+
+    devices = Device.objects.filter(provider=provider).order_by('-created_at')
+    return render(request, 'billing/devices.html', {'active': 'devices', 'provider': provider, 'devices': devices})
+
+
+@login_required
+def vouchers_page(request):
+    provider = _get_provider_or_none(request)
+    if provider is None:
+        return render(request, 'billing/no_provider.html')
+
+    if request.method == 'POST':
+        package_id = request.POST.get('package_id')
+        count_raw = request.POST.get('count', '1').strip()
+        package = Package.objects.filter(id=package_id, provider=provider).first()
+        try:
+            count = max(1, min(50, int(count_raw)))
+        except ValueError:
+            count = 1
+        if package:
+            for _ in range(count):
+                Voucher.objects.create(provider=provider, package=package)
+        return redirect('vouchers-page')
+
+    vouchers = Voucher.objects.filter(provider=provider).select_related('package', 'used_by').order_by('-created_at')
+    packages = Package.objects.filter(provider=provider, is_active=True).order_by('price')
+    return render(request, 'billing/vouchers.html', {'active': 'vouchers', 'provider': provider, 'vouchers': vouchers, 'packages': packages})
+
+
+@login_required
+def communications_page(request):
+    provider = _get_provider_or_none(request)
+    if provider is None:
+        return render(request, 'billing/no_provider.html')
+
+    if request.method == 'POST':
+        message = request.POST.get('message', '').strip()
+        if message:
+            Announcement.objects.create(provider=provider, message=message)
+        return redirect('communications-page')
+
+    announcements = Announcement.objects.filter(provider=provider).order_by('-created_at')
+    return render(request, 'billing/communications.html', {'active': 'communications', 'provider': provider, 'announcements': announcements})
+
+
+@login_required
+def analytics_page(request):
+    import json
+    from datetime import timedelta as _td
+
+    provider = _get_provider_or_none(request)
+    if provider is None:
+        return render(request, 'billing/no_provider.html')
+
+    today = timezone.now().date()
+    labels, values = [], []
+    for i in range(13, -1, -1):
+        day = today - _td(days=i)
+        total = Invoice.objects.filter(
+            customer__provider=provider, status='paid', paid_at__date=day
+        ).aggregate(total=Sum('amount'))['total'] or 0
+        labels.append(day.strftime('%b %d'))
+        values.append(float(total))
+
+    customers = Customer.objects.filter(provider=provider)
+    return render(request, 'billing/analytics.html', {
+        'active': 'analytics',
+        'provider': provider,
+        'chart_labels_json': json.dumps(labels),
+        'chart_values_json': json.dumps(values),
+        'total_customers': customers.count(),
+        'active_customers': customers.filter(status='active').count(),
+    })
 
 @require_http_methods(["GET", "POST"])
 def purchase_page(request, slug):
