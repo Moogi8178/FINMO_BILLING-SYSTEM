@@ -1,0 +1,34 @@
+{% extends "billing/base_dashboard.html" %}
+{% block page_title %}Tickets{% endblock %}
+{% block page_heading %}Tickets{% endblock %}
+{% block content %}
+<div class="section-title">New ticket</div>
+<form class="inline-form" method="post">
+  {% csrf_token %}
+  <div class="field">
+    <label>Customer (optional)</label>
+    <select name="customer_id" style="padding:8px 10px; border:1px solid #d5d9dd; border-radius:6px; font-size:0.9rem; width:160px;">
+      <option value="">— None —</option>
+      {% for c in customers %}<option value="{{ c.id }}">{{ c.full_name }}</option>{% endfor %}
+    </select>
+  </div>
+  <div class="field"><label>Subject</label><input type="text" name="subject" required></div>
+  <div class="field" style="flex:1; min-width:200px;"><label>Message</label><input type="text" name="message" style="width:100%;"></div>
+  <button class="btn" type="submit">Create ticket</button>
+</form>
+
+<div class="section-title">All tickets</div>
+<table>
+  <tr><th>Subject</th><th>Customer</th><th>Status</th><th>Opened</th></tr>
+  {% for t in tickets %}
+  <tr>
+    <td>{{ t.subject }}</td>
+    <td>{{ t.customer.full_name|default:"—" }}</td>
+    <td><span class="badge badge-{{ t.status }}">{{ t.get_status_display }}</span></td>
+    <td>{{ t.created_at|timesince }} ago</td>
+  </tr>
+  {% empty %}
+  <tr><td colspan="4" class="empty-hint">No tickets yet.</td></tr>
+  {% endfor %}
+</table>
+{% endblock %}
