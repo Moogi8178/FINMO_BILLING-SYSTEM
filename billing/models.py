@@ -204,7 +204,9 @@ class CommissionRecord(models.Model):
 
     def __str__(self):
         return f"{self.provider.business_name} - {self.period_start} to {self.period_end} - KES {self.commission_amount} ({self.status})"
-        class Lead(models.Model):
+
+
+class Lead(models.Model):
     """A prospective customer who hasn't signed up yet."""
     STATUS_CHOICES = [
         ('new', 'New'),
