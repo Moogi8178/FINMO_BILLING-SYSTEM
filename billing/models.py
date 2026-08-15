@@ -307,3 +307,20 @@ class Announcement(models.Model):
 
     def __str__(self):
         return self.message[:50]
+class PlatformBankAccount(models.Model):
+    """
+    The platform owner's bank account where provider commission payments
+    are deposited monthly. Superuser-only - not visible to individual
+    WiFi providers. This is a reference record for reconciliation; it
+    does not move money automatically.
+    """
+    bank_name = models.CharField(max_length=150)
+    account_name = models.CharField(max_length=150)
+    account_number = models.CharField(max_length=50)
+    branch = models.CharField(max_length=150, blank=True)
+    swift_code = models.CharField(max_length=20, blank=True)
+    notes = models.TextField(blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.bank_name} - {self.account_number}"
