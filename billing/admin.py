@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Provider, Package, Customer, Invoice, Payment, CommissionRecord, Lead, Ticket, Device, Voucher, Announcement
+from .models import Provider, Package, Customer, Invoice, Payment, CommissionRecord, Lead, Ticket, Device, Voucher, Announcement, PlatformBankAccount
 
 
 class ProviderScopedAdmin(admin.ModelAdmin):
