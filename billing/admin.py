@@ -133,3 +133,17 @@ class VoucherAdmin(ProviderScopedAdmin):
 class AnnouncementAdmin(ProviderScopedAdmin):
     list_display = ('message', 'is_active', 'provider', 'created_at')
     list_filter = ('is_active',)
+@admin.register(PlatformBankAccount)
+class PlatformBankAccountAdmin(admin.ModelAdmin):
+    # Platform-owner-only: where provider commission payments should be sent.
+    # Not visible to individual WiFi providers.
+    list_display = ('bank_name', 'account_name', 'account_number', 'updated_at')
+
+    def has_module_permission(self, request):
+        return request.user.is_superuser
+
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        if request.user.is_superuser:
+            return qs
+        return qs.none()
